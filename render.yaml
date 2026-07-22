@@ -1,0 +1,7 @@
+services:
+  - type: worker
+    name: 1win-cash-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python bot.py
