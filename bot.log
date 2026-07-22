@@ -1,0 +1,15 @@
+nohup: ignoring input
+Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 103] Software caused connection abort
+Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8869897716)
+Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientConnectorError: Cannot connect to host api.telegram.org:443 ssl:default [Network is unreachable]
+Sleep for 1.275327 seconds and try again... (tryings = 1, bot id = 8869897716)
+Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 103] Software caused connection abort
+Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8869897716)
+Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 103] Software caused connection abort
+Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8869897716)
+Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 103] Software caused connection abort
+Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8869897716)
+Failed to fetch updates - TelegramNetworkError: HTTP Client says - ClientOSError: [Errno 103] Software caused connection abort
+Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8869897716)
+Failed to fetch updates - TelegramNetworkError: HTTP Client says - Request timeout error
+Sleep for 1.000000 seconds and try again... (tryings = 0, bot id = 8869897716)
