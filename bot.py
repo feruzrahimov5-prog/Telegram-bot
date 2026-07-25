@@ -515,7 +515,7 @@ async def back_main(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.message.answer("🏠 Bosh sahifa", reply_markup=main_menu)
 
-# ==================== USERBOT QISMI (HUMO XABARLARINI KUZATISH) ====================
+# ==================== USERBOT QISMI ("+" BELGISI BILAN) ====================
 userbot_client = TelegramClient('userbot', api_id, api_hash)
 
 @userbot_client.on(events.NewMessage(chats=['@HUMOcardbot']))
@@ -523,9 +523,9 @@ async def humo_handler(event):
     message = event.message.text
     print(f"📩 HUMO xabar keldi: {message}")
 
-    # ✅ FAQAT UZS BORLIGINI TEKSHIRAMIZ
-    if "UZS" not in message:
-        print("⏭️ Bu xabarda summa yo‘q, o‘tkazib yuborildi.")
+    # ✅ "+" BELGISINI QIDIRAMIZ (KIRIM)
+    if "+" not in message:
+        print("⏭️ Bu xabarda '+' belgisi yo'q (chiqim), o'tkazib yuborildi.")
         return
 
     amount_match = re.search(r'([\d,]+\.\d{2})\s*UZS', message)
