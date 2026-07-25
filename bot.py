@@ -523,8 +523,9 @@ async def humo_handler(event):
     message = event.message.text
     print(f"📩 HUMO xabar keldi: {message}")
 
-    if "To‘ldirish" not in message:
-        print("⏭️ Bu xabar 'To‘ldirish' emas, o‘tkazib yuborildi.")
+    # ✅ IKKALA VARIANTNI QIDIRADI
+    if "To'ldirish" not in message and "To‘ldirish" not in message:
+        print("⏭️ Bu xabar 'To'ldirish' emas, o‘tkazib yuborildi.")
         return
 
     amount_match = re.search(r'([\d,]+\.\d{2})\s*UZS', message)
