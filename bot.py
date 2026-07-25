@@ -156,7 +156,7 @@ def update_deposit_status(deposit_id, status):
 init_db()
 init_pending_db()
 
-# ==================== MENYU ====================
+# ==================== MENYU (4 TUGMA) ====================
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="💎 HISOB TO'LDIRISH")],
@@ -167,16 +167,16 @@ main_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# ==================== 1WIN SAYTI ====================
+# ==================== 1WIN SAYTI (HAVOLA) ====================
 @dp.message(lambda message: message.text == "🌐 1WIN SAYTI")
 async def website_link(message: types.Message):
     await message.answer(
         "🌐 **1WIN RASMIY SAYTI**\n\n"
-        "👉 [Saytga o‘tish](https://lkmn.cc/8d1c6a09)\n\n"
+        "👉 [Saytga o‘tish](https://r1wbmjh.life/v3/aggressive-casino?p=i2ry)\n\n"
         "🔒 Xavfsiz va ishonchli havola!",
         reply_markup=InlineKeyboardMarkup(
             inline_keyboard=[
-                [InlineKeyboardButton(text="🌐 SAYTGA O‘TISH", url="https://lkmn.cc/8d1c6a09")]
+                [InlineKeyboardButton(text="🌐 SAYTGA O‘TISH", url="https://r1wbmjh.life/v3/aggressive-casino?p=i2ry")]
             ]
         )
     )
@@ -344,7 +344,7 @@ async def deposit_cancel(callback: types.CallbackQuery, state: FSMContext):
     ))
     await state.clear()
 
-# ==================== PUL YECHISH ====================
+# ==================== PUL YECHISH (4-10 BELGI) ====================
 @dp.message(lambda message: message.text == "💸 PUL YECHISH")
 async def withdraw_start(message: types.Message, state: FSMContext):
     await message.answer("📝 **1WIN ID** raqamingizni kiriting:", reply_markup=types.ReplyKeyboardRemove())
@@ -369,8 +369,9 @@ async def withdraw_card(message: types.Message, state: FSMContext):
     await state.update_data(card=card)
 
     await message.answer(
-        "🔑 **1Win dan kelgan 4 belgili kodni kiriting:**\n"
-        "(Pul yechish uchun 1Win ilovasida yoki saytida hosil qilingan kod)"
+        "🔑 **1Win dan kelgan kodni kiriting:**\n"
+        "(Kod 4 dan 10 belgigacha bo'lishi mumkin)\n"
+        "Masalan: 1234, 123456, 1234567890"
     )
     await state.set_state(WithdrawState.waiting_code)
 
@@ -378,9 +379,10 @@ async def withdraw_card(message: types.Message, state: FSMContext):
 async def withdraw_code(message: types.Message, state: FSMContext):
     code = message.text.strip()
     
-    if len(code) != 4:
+    if len(code) < 4 or len(code) > 10:
         await message.answer(
-            "❌ Kod 4 belgidan iborat bo‘lishi kerak!\n"
+            "❌ Kod 4 dan 10 belgigacha bo'lishi kerak!\n"
+            "Masalan: 1234, 123456, 1234567890\n\n"
             "Qayta kiriting:"
         )
         return
@@ -425,6 +427,7 @@ async def withdraw_code(message: types.Message, state: FSMContext):
     )
     await state.clear()
 
+# ==================== ADMIN TASDIQLASH ====================
 @dp.callback_query(lambda c: c.data.startswith('with_admin_accept_'))
 async def withdraw_admin_accept(callback: types.CallbackQuery, state: FSMContext):
     parts = callback.data.split('_')
@@ -557,11 +560,9 @@ async def humo_handler(event):
 
 # ==================== IKKALA BOTNI BIR VAQTDA ISHGA TUSHIRISH ====================
 async def main():
-    # Asosiy botni ishga tushirish
     print("🚀 1WIN CASH bot ishga tushdi...")
     asyncio.create_task(dp.start_polling(bot))
     
-    # Userbotni ishga tushirish
     await userbot_client.start(phone=phone)
     print("🚀 Userbot ishga tushdi! @HUMOcardbot dan kelgan xabarlar kuzatilmoqda...")
     await userbot_client.run_until_disconnected()
