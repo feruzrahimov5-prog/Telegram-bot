@@ -132,18 +132,16 @@ def add_pending_deposit(user_id_1win, telegram_id, amount, random_amount, card_n
     conn.commit()
     conn.close()
 
-def get_pending_deposit_by_amount_card(amount, card_last4):
-    """Summa va karta bo'yicha qidirish"""
+def get_pending_deposit_by_amount(amount):
+    """Summani yaxlitlab qidirish (tiyin farqini hisobga olib)"""
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number
         FROM pending_deposits
-        WHERE status = 'pending'
-          AND ROUND(random_amount) = ROUND(?)
-          AND card_number LIKE ?
+        WHERE status = 'pending' AND ROUND(random_amount) = ROUND(?)
         ORDER BY created_at DESC LIMIT 1
-    ''', (amount, f'%{card_last4}'))
+    ''', (amount,))
     row = cursor.fetchone()
     conn.close()
     return row
@@ -542,21 +540,16 @@ async def humo_handler(event):
     incoming_amount = round(float(amount_str))
     print(f"💰 Kirim: {incoming_amount} UZS")
 
-    # 3. KARTA RAQAMINI OLISH (HUMOCARD *6556)
-    card_match = re.search(r'HUMOCARD\s*\*(\d+)', message)
-    card_last4 = card_match.group(1) if card_match else None
-    print(f"💳 Karta oxirgi 4 raqam: {card_last4}")
-
-    # 4. BAZADAN DEPOZITNI QIDIRISH (KARTA + SUMMA)
-    deposit = get_pending_deposit_by_amount_card(incoming_amount, card_last4)
+    # 3. BAZADAN DEPOZITNI QIDIRISH (FAQAT SUMMA)
+    deposit = get_pending_deposit_by_amount(incoming_amount)
     if not deposit:
-        print(f"❌ Bu summa ({incoming_amount}) yoki karta ({card_last4}) uchun kutilayotgan depozit topilmadi.")
+        print(f"❌ Bu summa ({incoming_amount}) uchun kutilayotgan depozit topilmadi.")
         return
 
     deposit_id, user_id_1win, telegram_id, amount, random_amount, card_number = deposit
     print(f"✅ Depozit topildi! ID: {deposit_id}, 1Win ID: {user_id_1win}")
 
-    # 5. API GA SO'ROV YUBORISH
+    # 4. API GA SO'ROV YUBORISH
     result = await send_deposit_to_1win(user_id_1win, int(amount))
 
     if result.get("success", False) or (200 <= result.get("status", 0) < 300):
@@ -581,7 +574,7 @@ async def humo_handler(event):
             f"❌ Depozit avtomatik tasdiqlanmadi!\n👤 1Win ID: {user_id_1win}\n💰 Summa: {int(amount):,} UZS\n⚠️ Qo‘lda tekshiring!"
         )
 
-    # 6. HOLATNI YANGILASH
+    # 5. HOLATNI YANGILASH
     update_deposit_status(deposit_id, status)
 
 # ==================== IKKALA BOTNI BIR VAQTDA ISHGA TUSHIRISH ====================
