@@ -49,8 +49,9 @@ def get_next_card():
     return card
 
 def generate_random_amount(amount):
+    """Random summa yaratish (tiyin bilan)"""
     change = random.uniform(-0.5, 0.5)
-    return round(amount * (1 + change / 100))
+    return round(amount * (1 + change / 100), 2)
 
 # ==================== FSM HOLATLAR ====================
 class DepositState(StatesGroup):
@@ -131,15 +132,18 @@ def add_pending_deposit(user_id_1win, telegram_id, amount, random_amount, card_n
     conn.commit()
     conn.close()
 
-def get_pending_deposit_by_amount(amount):
+def get_pending_deposit_by_amount_card(amount, card_last4):
+    """Summa va karta bo'yicha qidirish"""
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
     cursor.execute('''
         SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number
         FROM pending_deposits
-        WHERE status = 'pending' AND random_amount = ?
+        WHERE status = 'pending'
+          AND ROUND(random_amount) = ROUND(?)
+          AND card_number LIKE ?
         ORDER BY created_at DESC LIMIT 1
-    ''', (amount,))
+    ''', (amount, f'%{card_last4}'))
     row = cursor.fetchone()
     conn.close()
     return row
@@ -315,8 +319,8 @@ async def deposit_amount(message: types.Message, state: FSMContext):
             f"💳 **To'lovni amalga oshiring:**\n\n"
             f"Karta raqami: `{card_number}`\n"
             f"💰 Siz so'ragansiz: {amount:,} UZS\n"
-            f"🔢 To'lov summasi: `{random_amount:,} UZS`\n\n"
-            f"⚠️ Aynan **{random_amount:,} UZS** o'tkazing!",
+            f"🔢 To'lov summasi: `{random_amount:,.2f} UZS`\n\n"
+            f"⚠️ Aynan **{random_amount:,.2f} UZS** o'tkazing!",
             reply_markup=InlineKeyboardMarkup(
                 inline_keyboard=[
                     [InlineKeyboardButton(text="📋 Nusxa olish", callback_data=f"copy_{card_number}")],
@@ -523,40 +527,61 @@ async def humo_handler(event):
     message = event.message.text
     print(f"📩 HUMO xabar keldi: {message}")
 
-    # ✅ "+" BELGISINI QIDIRAMIZ (KIRIM)
+    # 1. KIRIM (PLUS) YOKI CHIQIMNI TEKSHIRISH
     if "+" not in message:
         print("⏭️ Bu xabarda '+' belgisi yo'q (chiqim), o'tkazib yuborildi.")
         return
 
-    amount_match = re.search(r'([\d,]+\.\d{2})\s*UZS', message)
+    # 2. SUMMANI YEVROPA FORMATIDA O'QISH (20.879,36)
+    amount_match = re.search(r'(\d[\d\.]*,\d{2})\s*UZS', message)
     if not amount_match:
         print("❌ Summa topilmadi.")
         return
 
-    incoming_amount = float(amount_match.group(1).replace(',', ''))
+    amount_str = amount_match.group(1).replace(".", "").replace(",", ".")
+    incoming_amount = round(float(amount_str))
     print(f"💰 Kirim: {incoming_amount} UZS")
 
-    deposit = get_pending_deposit_by_amount(incoming_amount)
+    # 3. KARTA RAQAMINI OLISH (HUMOCARD *6556)
+    card_match = re.search(r'HUMOCARD\s*\*(\d+)', message)
+    card_last4 = card_match.group(1) if card_match else None
+    print(f"💳 Karta oxirgi 4 raqam: {card_last4}")
+
+    # 4. BAZADAN DEPOZITNI QIDIRISH (KARTA + SUMMA)
+    deposit = get_pending_deposit_by_amount_card(incoming_amount, card_last4)
     if not deposit:
-        print(f"❌ Bu summa ({incoming_amount}) uchun kutilayotgan depozit topilmadi.")
+        print(f"❌ Bu summa ({incoming_amount}) yoki karta ({card_last4}) uchun kutilayotgan depozit topilmadi.")
         return
 
     deposit_id, user_id_1win, telegram_id, amount, random_amount, card_number = deposit
     print(f"✅ Depozit topildi! ID: {deposit_id}, 1Win ID: {user_id_1win}")
 
-    async with aiohttp.ClientSession() as session:
-        payload = {"userId": int(user_id_1win), "amount": int(amount)}
-        headers = {"X-API-KEY": API_KEY, "Content-Type": "application/json"}
-        async with session.post(DEPOSIT_URL, json=payload, headers=headers, timeout=30) as resp:
-            if 200 <= resp.status < 300:
-                status = "success"
-                await bot.send_message(telegram_id, f"✅ Depozit muvaffaqiyatli! 💰 {amount:,} UZS hisobingizga tushdi.")
-                await bot.send_message(ADMIN_ID, f"✅ Depozit avtomatik tasdiqlandi!\n👤 1Win ID: {user_id_1win}\n💰 Summa: {amount:,} UZS")
-            else:
-                status = "failed"
-                await bot.send_message(telegram_id, f"❌ Depozitda xatolik yuz berdi. Admin: @feruz063")
-                await bot.send_message(ADMIN_ID, f"❌ Depozit avtomatik tasdiqlanmadi!\n👤 1Win ID: {user_id_1win}\n💰 Summa: {amount:,} UZS\n⚠️ Qo‘lda tekshiring!")
+    # 5. API GA SO'ROV YUBORISH
+    result = await send_deposit_to_1win(user_id_1win, int(amount))
 
+    if result.get("success", False) or (200 <= result.get("status", 0) < 300):
+        status = "success"
+        await bot.send_message(
+            telegram_id,
+            f"✅ Depozit muvaffaqiyatli!\n💰 {int(amount):,} UZS hisobingizga tushdi."
+        )
+        await bot.send_message(
+            ADMIN_ID,
+            f"✅ Depozit avtomatik tasdiqlandi!\n👤 1Win ID: {user_id_1win}\n💰 Summa: {int(amount):,} UZS"
+        )
+    else:
+        status = "failed"
+        error_msg = result.get('message', 'Nomaʼlum xatolik')
+        await bot.send_message(
+            telegram_id,
+            f"❌ Depozitda xatolik yuz berdi.\nXatolik: {error_msg}\n📞 Admin: @feruz063"
+        )
+        await bot.send_message(
+            ADMIN_ID,
+            f"❌ Depozit avtomatik tasdiqlanmadi!\n👤 1Win ID: {user_id_1win}\n💰 Summa: {int(amount):,} UZS\n⚠️ Qo‘lda tekshiring!"
+        )
+
+    # 6. HOLATNI YANGILASH
     update_deposit_status(deposit_id, status)
 
 # ==================== IKKALA BOTNI BIR VAQTDA ISHGA TUSHIRISH ====================
