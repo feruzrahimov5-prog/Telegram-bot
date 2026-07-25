@@ -333,10 +333,49 @@ async def deposit_amount(message: types.Message, state: FSMContext):
 
 @dp.callback_query(lambda c: c.data == "deposit_done")
 async def deposit_done(callback: types.CallbackQuery, state: FSMContext):
-    await callback.message.edit_text(
-        f"⏳ **Depozit amalga oshirilmoqda...**\n"
-        f"💰 Pul tushganini tekshirib, avtomatik tasdiqlanadi."
-    )
+    data = await state.get_data()
+    user_id_1win = data.get('user_id_1win')
+    random_amount = data.get('random_amount', 0)
+    
+    # Bazada depozit holatini tekshirish
+    conn = sqlite3.connect(PENDING_DB)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT status, created_at FROM pending_deposits
+        WHERE user_id_1win = ? AND random_amount = ? AND status = 'pending'
+        ORDER BY created_at DESC LIMIT 1
+    ''', (user_id_1win, random_amount))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        # To'lov hali tasdiqlanmagan — "bekor bo'ldi" deymiz
+        conn = sqlite3.connect(PENDING_DB)
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE pending_deposits SET status = 'cancelled' 
+            WHERE user_id_1win = ? AND random_amount = ?
+        ''', (user_id_1win, random_amount))
+        conn.commit()
+        conn.close()
+        
+        await callback.message.edit_text(
+            f"❌ **Depozit bekor qilindi!**\n\n"
+            f"📝 1Win ID: {user_id_1win}\n"
+            f"💰 Summa: {random_amount:,.2f} UZS\n\n"
+            f"⚠️ Siz to'lov qilmaganligingiz uchun depozit bekor qilindi.\n"
+            f"📞 Savollar uchun: @feruz063",
+            reply_markup=main_menu
+        )
+    else:
+        # To'lov allaqachon tasdiqlangan yoki yo'q
+        await callback.message.edit_text(
+            f"⚠️ **To'lov topilmadi!**\n\n"
+            f"💰 Siz so'ragansiz: {random_amount:,.2f} UZS\n\n"
+            f"❌ To'lov qilmagan bo'lsangiz, qayta urinib ko'ring.\n"
+            f"📞 Savollar uchun: @feruz063",
+            reply_markup=main_menu
+        )
     await state.clear()
 
 @dp.callback_query(lambda c: c.data == "deposit_cancel")
@@ -517,7 +556,7 @@ async def back_main(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.message.answer("🏠 Bosh sahifa", reply_markup=main_menu)
 
-# ==================== USERBOT QISMI ("+" BELGISI BILAN) ====================
+# ==================== USERBOT QISMI ====================
 userbot_client = TelegramClient('userbot', api_id, api_hash)
 
 @userbot_client.on(events.NewMessage(chats=['@HUMOcardbot']))
@@ -526,11 +565,11 @@ async def humo_handler(event):
     print(f"📩 HUMO xabar keldi: {message}")
 
     # 1. KIRIM (PLUS) YOKI CHIQIMNI TEKSHIRISH
-    if "+" not in message:
-        print("⏭️ Bu xabarda '+' belgisi yo'q (chiqim), o'tkazib yuborildi.")
+    if "➕" not in message:
+        print("⏭️ Bu xabarda '➕' belgisi yo'q (chiqim), o'tkazib yuborildi.")
         return
 
-    # 2. SUMMANI YEVROPA FORMATIDA O'QISH (20.879,36)
+    # 2. SUMMANI YEVROPA FORMATIDA O'QISH (20.012,00)
     amount_match = re.search(r'(\d[\d\.]*,\d{2})\s*UZS', message)
     if not amount_match:
         print("❌ Summa topilmadi.")
