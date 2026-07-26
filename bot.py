@@ -254,24 +254,64 @@ async def deposit_amount(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer("❌ Faqat raqam kiriting!")
 
+# ==================== NUSXA OLISH ====================
 @dp.callback_query(lambda c: c.data.startswith('copy_'))
 async def copy_card(callback: types.CallbackQuery):
-    await callback.answer("📋 Nusxalandi!", show_alert=True)
+    card = callback.data.split('_', 1)[1]  # "copy_9860..." dan kartani olish
+    await callback.answer("📋 Karta raqami nusxalandi!", show_alert=True)
+    await callback.message.answer(
+        f"📋 **Karta raqami:**\n`{card}`\n\n👆 Ustiga bosib nusxa oling.",
+        parse_mode="Markdown"
+    )
 
+# ==================== DEPOZIT TASDIQLASH ====================
 @dp.callback_query(lambda c: c.data == "deposit_done")
 async def deposit_done(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     user_id_1win = data.get('user_id_1win', '')
     random_amount = data.get('random_amount', 0)
+    user_amount = data.get('user_amount', 0)
+
+    # Bazada pending holatini tekshirish
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
-    cursor.execute('''SELECT status FROM pending_deposits WHERE user_id_1win = ? AND random_amount = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1''', (user_id_1win, random_amount))
+    cursor.execute('''SELECT status, id FROM pending_deposits WHERE user_id_1win = ? AND random_amount = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1''', (user_id_1win, random_amount))
     row = cursor.fetchone()
     conn.close()
+
     if row:
-        await callback.message.edit_text(f"⏳ **TEKSHIRILMOQDA...**\n\n💰 Summa: {random_amount:,.2f} UZS\n\n✅ To'lov qilgan bo'lsangiz, 5-10 daqiqada tasdiqlanadi.\n📞 @feruz063", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 TEKSHIRISH", callback_data=f"check_{user_id_1win}")], [InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]]))
+        # 2️⃣ PUL TUSHGAN (pending bor) → KUTING
+        await callback.message.edit_text(
+            f"⏳ **Iltimos kuting...**\n\n"
+            f"💰 Summa: {random_amount:,.2f} UZS\n\n"
+            f"🔔 To'lov tekshirilmoqda. 5-10 daqiqada tasdiqlanadi.\n"
+            f"📞 Savollar: @feruz063",
+            reply_markup=InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="🔄 TEKSHIRISH", callback_data=f"check_{user_id_1win}")],
+                    [InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]
+                ]
+            )
+        )
+        # 4️⃣ ADMIN XABAR (depozit so'rovi)
+        await bot.send_message(
+            ADMIN_ID,
+            f"📥 **Yangi depozit so'rovi!**\n\n"
+            f"👤 1Win ID: `{user_id_1win}`\n"
+            f"💰 Summa: {user_amount:,} UZS\n"
+            f"🔢 Random: {random_amount:,.2f} UZS\n"
+            f"⏳ Holat: Kutilmoqda"
+        )
     else:
-        await callback.message.edit_text("⚠️ Topilmadi yoki tasdiqlangan!", reply_markup=main_menu)
+        # 1️⃣ PUL TUSHGANI YO'Q → BEKOR QILINDI
+        await callback.message.edit_text(
+            f"❌ **Depozit bekor qilindi!**\n\n"
+            f"💰 Siz so'ragansiz: {random_amount:,.2f} UZS\n\n"
+            f"⚠️ Siz to'lov qilmaganligingiz uchun depozit bekor qilindi.\n"
+            f"📞 Savollar: @feruz063",
+            reply_markup=main_menu
+        )
+
     await state.clear()
     await callback.answer()
 
@@ -398,9 +438,12 @@ async def humo_handler(event):
     logging.info(f"📩 HUMO xabar")
     await bot.send_message(ADMIN_ID, f"📩 **HUMO:**\n\n{message}")
     
-    if "To'ldirish" not in message:
+    # ✅ YANGI KOD: plus belgisini qidiramiz
+    if "➕" not in message and "+" not in message:
+        await bot.send_message(ADMIN_ID, "⏭️ Kirim belgisi yo'q, o'tkazib yuborildi.")
         return
     
+    # SUMMANI OLISH
     amount_match = re.search(r'[\+➕]\s*(\d[\d\.]*,\d{2})\s*UZS', message)
     if amount_match:
         amount_str = amount_match.group(1).replace(".", "").replace(",", ".")
@@ -425,13 +468,15 @@ async def humo_handler(event):
     
     result = await send_deposit_to_1win(user_id_1win, int(amount))
     
+    # 3️⃣ DEPOZIT MUVAFFAQIYATLI BO'LSA
     if result.get("success", False):
         update_deposit_status(deposit_id, "success")
         try:
-            await bot.send_message(int(telegram_id), f"✅ **TASDIQLANDI!**\n💰 {int(amount):,} UZS", reply_markup=main_menu)
+            await bot.send_message(int(telegram_id), f"✅ **Depozit muvaffaqiyatli!**\n💰 {int(amount):,} UZS hisobingizga tushdi.", reply_markup=main_menu)
         except:
             pass
-        await bot.send_message(ADMIN_ID, f"✅ AVTOMATIK! {int(amount):,} UZS")
+        # Admin xabar
+        await bot.send_message(ADMIN_ID, f"✅ **Depozit amalga oshirildi!**\n👤 ID: {user_id_1win}\n💰 Summa: {int(amount):,} UZS")
     else:
         update_deposit_status(deposit_id, "failed")
         error_msg = result.get('message', 'Xatolik')
