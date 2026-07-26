@@ -101,3 +101,43 @@ nano bot.py
 python bot.py
 pip install telethon aiohttp
 python bot.py
+rm bot.py
+nano bot.py
+git add bot.py
+git commit -m "Update bot with HUMO auto deposit"
+git push origin main
+nano requirements.txt
+git add requirements.txt
+git commit -m "Fix requirements"
+git push origin main
+rm bot.py
+nano bot.py
+git add bot.py
+git commit -m "Fix HUMO detection"
+git push origin main
+rm bot.py
+nano bot.py
+git add bot.py
+git commit -m "Fix humo detection"
+git push origin main
+rm bot.py
+nano bot.py
+git add bot.py && git commit -m "Fix humo handler" && git push origin main
+rm bot.py
+nano bot.py
+git add bot.py && git commit -m "Fix humo handler" && git push origin main
+rm bot.py
+nano bot.py
+git add bot.py && git commit -m "Fix humo handler: use +" && git push origin main
+rm bot.py
+nano bot.py
+git add bot.py && git commit -m "Fix humo handler: regex, card, round" && git push origin main
+git push origin main
+rm bot.py
+nano bot.py
+git add bot.py && git commit -m "Final clean version" && git push origin main
+rm bot.py
+nano bot.py
+git add bot.py && git commit -m "Final version with all fixes" && git push origin main
+rm pending.db
+git add bot.py && git commit -m "Final version with all fixes" && git push origin main
