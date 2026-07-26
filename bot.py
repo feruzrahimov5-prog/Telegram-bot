@@ -5,7 +5,7 @@ import aiohttp
 import sqlite3
 import re
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart
 from aiogram.types import (
@@ -24,7 +24,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-# Environment variable'lardan o'qish (Railway uchun)
 TOKEN = os.getenv("BOT_TOKEN", "8869897716:AAG13rX0nbq3DKvpVx7ZrAHa2zx-Xy9xhd0")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "1829563275"))
 API_KEY = os.getenv("API_KEY", "51c9fcdaecf3a239cdf85aaeddd098e273b208e505edf2f66d94d3efee562751")
@@ -53,14 +52,13 @@ def get_next_card():
     return card
 
 def generate_random_amount(amount):
-    """Random summa yaratish (0.1% - 0.5% farq bilan)"""
     change = random.uniform(0.1, 0.5)
     if random.choice([True, False]):
         return round(amount * (1 + change / 100), 2)
     else:
         return round(amount * (1 - change / 100), 2)
 
-# ==================== FSM HOLATLAR ====================
+# ==================== FSM ====================
 class DepositState(StatesGroup):
     waiting_id = State()
     waiting_confirm = State()
@@ -74,50 +72,28 @@ class WithdrawState(StatesGroup):
 class AdminWithdrawState(StatesGroup):
     waiting_amount = State()
 
-# ==================== MA'LUMOTLAR BAZASI ====================
+# ==================== DATABASE ====================
 DB_PATH = "users.db"
 PENDING_DB = "pending.db"
 
 def init_db():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            user_id INTEGER PRIMARY KEY,
-            username TEXT,
-            first_name TEXT,
-            last_name TEXT,
-            joined_date TEXT
-        )
-    ''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, first_name TEXT, last_name TEXT, joined_date TEXT)''')
     conn.commit()
     conn.close()
 
 def init_pending_db():
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS pending_deposits (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id_1win TEXT,
-            telegram_id TEXT,
-            amount REAL,
-            random_amount REAL,
-            card_number TEXT,
-            status TEXT,
-            created_at TEXT
-        )
-    ''')
+    cursor.execute('''CREATE TABLE IF NOT EXISTS pending_deposits (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id_1win TEXT, telegram_id TEXT, amount REAL, random_amount REAL, card_number TEXT, status TEXT, created_at TEXT)''')
     conn.commit()
     conn.close()
 
 def add_user(user_id, username, first_name, last_name):
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    cursor.execute('''
-        INSERT OR IGNORE INTO users (user_id, username, first_name, last_name, joined_date)
-        VALUES (?, ?, ?, ?, datetime('now'))
-    ''', (user_id, username, first_name, last_name))
+    cursor.execute('''INSERT OR IGNORE INTO users (user_id, username, first_name, last_name, joined_date) VALUES (?, ?, ?, ?, datetime('now'))''', (user_id, username, first_name, last_name))
     conn.commit()
     conn.close()
 
@@ -132,48 +108,23 @@ def get_total_users():
 def add_pending_deposit(user_id_1win, telegram_id, amount, random_amount, card_number):
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO pending_deposits (user_id_1win, telegram_id, amount, random_amount, card_number, status, created_at)
-        VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))
-    ''', (user_id_1win, telegram_id, amount, random_amount, card_number))
+    cursor.execute('''INSERT INTO pending_deposits (user_id_1win, telegram_id, amount, random_amount, card_number, status, created_at) VALUES (?, ?, ?, ?, ?, 'pending', datetime('now'))''', (user_id_1win, telegram_id, amount, random_amount, card_number))
     conn.commit()
     conn.close()
 
 def get_pending_deposit_by_amount(incoming_amount):
-    """HUMO cardbotdan kelgan summa bo'yicha pending depozitni topish"""
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
     
-    # 1-usul: random_amount yaxlitlangan holda aniq mos
-    cursor.execute('''
-        SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number
-        FROM pending_deposits
-        WHERE status = 'pending' 
-        AND CAST(ROUND(random_amount) AS INTEGER) = ?
-        ORDER BY created_at DESC LIMIT 1
-    ''', (incoming_amount,))
+    cursor.execute('''SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number FROM pending_deposits WHERE status = 'pending' AND CAST(ROUND(random_amount) AS INTEGER) = ? ORDER BY created_at DESC LIMIT 1''', (incoming_amount,))
     row = cursor.fetchone()
     
-    # 2-usul: ±3 farq bilan
     if not row:
-        cursor.execute('''
-            SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number
-            FROM pending_deposits
-            WHERE status = 'pending' 
-            AND CAST(ROUND(random_amount) AS INTEGER) BETWEEN ? AND ?
-            ORDER BY created_at DESC LIMIT 1
-        ''', (incoming_amount - 3, incoming_amount + 3))
+        cursor.execute('''SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number FROM pending_deposits WHERE status = 'pending' AND CAST(ROUND(random_amount) AS INTEGER) BETWEEN ? AND ? ORDER BY created_at DESC LIMIT 1''', (incoming_amount - 3, incoming_amount + 3))
         row = cursor.fetchone()
     
-    # 3-usul: Asl summa bo'yicha
     if not row:
-        cursor.execute('''
-            SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number
-            FROM pending_deposits
-            WHERE status = 'pending' 
-            AND CAST(ROUND(amount) AS INTEGER) = ?
-            ORDER BY created_at DESC LIMIT 1
-        ''', (incoming_amount,))
+        cursor.execute('''SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number FROM pending_deposits WHERE status = 'pending' AND CAST(ROUND(amount) AS INTEGER) = ? ORDER BY created_at DESC LIMIT 1''', (incoming_amount,))
         row = cursor.fetchone()
     
     conn.close()
@@ -194,7 +145,6 @@ def get_pending_deposits_count():
     conn.close()
     return count
 
-# Ma'lumotlar bazalarini ishga tushirish
 init_db()
 init_pending_db()
 
@@ -209,7 +159,7 @@ main_menu = ReplyKeyboardMarkup(
     resize_keyboard=True
 )
 
-# ==================== API SO'ROVLARI ====================
+# ==================== API ====================
 async def send_deposit_to_1win(user_id: str, amount: int):
     try:
         headers = {"X-API-KEY": API_KEY, "Content-Type": "application/json"}
@@ -233,39 +183,15 @@ async def send_deposit_to_1win(user_id: str, amount: int):
     except Exception as e:
         return {"success": False, "message": str(e), "status": 0}
 
-# ==================== BOT HANDLERLAR ====================
+# ==================== HANDLERLAR ====================
 @dp.message(CommandStart())
 async def start_cmd(message: types.Message):
-    add_user(
-        message.from_user.id,
-        message.from_user.username or "",
-        message.from_user.first_name or "",
-        message.from_user.last_name or ""
-    )
-    await message.answer(
-        "🏦 **1WIN CASH**\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "👋 Xush kelibsiz!\n\n"
-        "💎 Hisob to'ldirish\n"
-        "💸 Pul yechish\n"
-        "🌐 1WIN sayti\n"
-        "📞 Admin bilan bog'lanish\n\n"
-        "👇 Tanlang:",
-        reply_markup=main_menu
-    )
+    add_user(message.from_user.id, message.from_user.username or "", message.from_user.first_name or "", message.from_user.last_name or "")
+    await message.answer("🏦 **1WIN CASH**\n━━━━━━━━━━━━━━━━━━━━━\n👋 Xush kelibsiz!\n\n👇 Tanlang:", reply_markup=main_menu)
 
 @dp.message(lambda message: message.text == "🌐 1WIN SAYTI")
 async def website_link(message: types.Message):
-    await message.answer(
-        "🌐 **1WIN RASMIY SAYTI**\n\n"
-        "👉 [Saytga o'tish](https://r1wbmjh.life/v3/aggressive-casino?p=i2ry)\n\n"
-        "🔒 Xavfsiz va ishonchli havola!",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🌐 SAYTGA O'TISH", url="https://r1wbmjh.life/v3/aggressive-casino?p=i2ry")]
-            ]
-        )
-    )
+    await message.answer("🌐 **1WIN RASMIY SAYTI**\n\n👉 [Saytga o'tish](https://r1wbmjh.life/v3/aggressive-casino?p=i2ry)", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🌐 SAYTGA O'TISH", url="https://r1wbmjh.life/v3/aggressive-casino?p=i2ry")]]))
 
 @dp.message(lambda message: message.text == "📞 ADMIN BILAN BOG'LANISH")
 async def admin_contact(message: types.Message):
@@ -275,12 +201,7 @@ async def admin_contact(message: types.Message):
 async def stats_cmd(message: types.Message):
     total = get_total_users()
     pending = get_pending_deposits_count()
-    await message.answer(
-        f"📊 **BOT STATISTIKASI**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👥 Jami foydalanuvchilar: **{total}** ta\n"
-        f"⏳ Kutilayotgan depozitlar: **{pending}** ta"
-    )
+    await message.answer(f"📊 **STATISTIKA**\n━━━━━━━━━━━━━━━━━━━━━\n\n👥 Foydalanuvchilar: **{total}** ta\n⏳ Kutilayotgan depozitlar: **{pending}** ta")
 
 # ==================== DEPOZIT ====================
 @dp.message(lambda message: message.text == "💎 HISOB TO'LDIRISH")
@@ -294,29 +215,14 @@ async def deposit_id(message: types.Message, state: FSMContext):
     if not user_id.isdigit():
         await message.answer("❌ ID faqat raqamlardan iborat!\n📝 Qayta kiriting:")
         return
-    
     await state.update_data(user_id=user_id)
-    await message.answer(
-        f"👤 **Sizning 1Win ID:** `{user_id}`\n\n✅ Bu sizning ID-ingizmi?",
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="✅ HA", callback_data="confirm_id_yes")],
-                [InlineKeyboardButton(text="❌ YO'Q", callback_data="confirm_id_no")]
-            ]
-        )
-    )
+    await message.answer(f"👤 **Sizning 1Win ID:** `{user_id}`\n\n✅ Bu sizning ID-ingizmi?", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ HA", callback_data="confirm_id_yes")], [InlineKeyboardButton(text="❌ YO'Q", callback_data="confirm_id_no")]]))
     await state.set_state(DepositState.waiting_confirm)
 
 @dp.callback_query(lambda c: c.data == "confirm_id_yes")
 async def confirm_id_yes(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.delete()
-    await callback.message.answer(
-        "💰 **Summani kiriting:**\n"
-        "⚠️ Minimal: 20,000 so'm\n"
-        "Maksimal: 100,000,000 so'm\n\n"
-        "Masalan: 100000"
-    )
+    await callback.message.answer("💰 **Summani kiriting:**\n⚠️ Minimal: 20,000 so'm\nMasalan: 100000")
     await state.set_state(DepositState.waiting_amount)
     await callback.answer()
 
@@ -337,122 +243,54 @@ async def deposit_amount(message: types.Message, state: FSMContext):
         if amount > 100000000:
             await message.answer("❌ Maksimal: 100,000,000 so'm")
             return
-        
         data = await state.get_data()
         user_id = data.get('user_id')
         random_amount = generate_random_amount(amount)
         card_number = get_next_card()
-        
-        # Bazaga qo'shish
         add_pending_deposit(user_id, str(message.from_user.id), amount, random_amount, card_number)
-        logging.info(f"Yangi depozit: 1Win ID={user_id}, Amount={amount}, Random={random_amount}, Card={card_number}")
-        
-        await state.update_data(
-            user_amount=amount,
-            random_amount=random_amount,
-            card_number=card_number,
-            user_id_1win=user_id,
-            deposit_time=datetime.now().isoformat()
-        )
-        
-        await message.answer(
-            f"💳 **TO'LOV UCHUN MA'LUMOTLAR:**\n\n"
-            f"📋 Karta raqami: `{card_number}`\n"
-            f"💰 So'ralgan summa: {amount:,} UZS\n"
-            f"🔢 O'tkaziladigan summa: **{random_amount:,.2f} UZS**\n\n"
-            f"⚠️ **AYNAN {random_amount:,.2f} UZS** o'tkazing!\n"
-            f"⏰ To'lov 15 daqiqa ichida amalga oshirilishi kerak\n\n"
-            f"To'lov qilgach, quyidagi tugmani bosing:",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="📋 KARTA RAQAMINI NUSXALASH", callback_data=f"copy_{card_number}")],
-                    [InlineKeyboardButton(text="✅ TO'LOV QILDIM", callback_data="deposit_done")],
-                    [InlineKeyboardButton(text="❌ BEKOR QILISH", callback_data="deposit_cancel")]
-                ]
-            )
-        )
+        logging.info(f"Yangi depozit: ID={user_id}, Summa={amount}, Random={random_amount}")
+        await state.update_data(user_amount=amount, random_amount=random_amount, card_number=card_number, user_id_1win=user_id)
+        await message.answer(f"💳 **TO'LOV UCHUN:**\n\n📋 Karta: `{card_number}`\n💰 Summa: {amount:,} UZS\n🔢 O'tkaziladigan: **{random_amount:,.2f} UZS**\n\n⚠️ Aynan shu summani o'tkazing!", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📋 NUSXA OLISH", callback_data=f"copy_{card_number}")], [InlineKeyboardButton(text="✅ TO'LOV QILDIM", callback_data="deposit_done")], [InlineKeyboardButton(text="❌ BEKOR QILISH", callback_data="deposit_cancel")]]))
     except ValueError:
         await message.answer("❌ Faqat raqam kiriting!")
 
 @dp.callback_query(lambda c: c.data.startswith('copy_'))
 async def copy_card(callback: types.CallbackQuery):
-    card = callback.data.split('_', 1)[1]
-    await callback.answer("📋 Karta raqami nusxa olindi!", show_alert=True)
+    await callback.answer("📋 Nusxalandi!", show_alert=True)
 
 @dp.callback_query(lambda c: c.data == "deposit_done")
 async def deposit_done(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
-    random_amount = data.get('random_amount', 0)
     user_id_1win = data.get('user_id_1win', '')
-    
-    # Holatni tekshirish
+    random_amount = data.get('random_amount', 0)
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT status FROM pending_deposits
-        WHERE user_id_1win = ? AND random_amount = ? AND status = 'pending'
-        ORDER BY created_at DESC LIMIT 1
-    ''', (user_id_1win, random_amount))
+    cursor.execute('''SELECT status FROM pending_deposits WHERE user_id_1win = ? AND random_amount = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1''', (user_id_1win, random_amount))
     row = cursor.fetchone()
     conn.close()
-    
     if row:
-        # To'lov hali tasdiqlanmagan
-        await callback.message.edit_text(
-            f"⏳ **TO'LOV TEKSHIRILMOQDA...**\n\n"
-            f"💰 O'tkazilgan summa: {random_amount:,.2f} UZS\n\n"
-            f"✅ Agar to'lov qilgan bo'lsangiz, 5-10 daqiqa ichida avtomatik tasdiqlanadi.\n"
-            f"❌ Agar to'lov qilmagan bo'lsangiz, 15 daqiqadan so'ng so'rov bekor qilinadi.\n\n"
-            f"📞 Savollar uchun: @feruz063",
-            reply_markup=InlineKeyboardMarkup(
-                inline_keyboard=[
-                    [InlineKeyboardButton(text="🔄 HOLATNI TEKSHIRISH", callback_data=f"check_status_{user_id_1win}")],
-                    [InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]
-                ]
-            )
-        )
+        await callback.message.edit_text(f"⏳ **TEKSHIRILMOQDA...**\n\n💰 Summa: {random_amount:,.2f} UZS\n\n✅ To'lov qilgan bo'lsangiz, 5-10 daqiqada tasdiqlanadi.\n📞 @feruz063", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🔄 TEKSHIRISH", callback_data=f"check_{user_id_1win}")], [InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]]))
     else:
-        await callback.message.edit_text(
-            f"⚠️ **Topilmadi yoki allaqachon tasdiqlangan!**\n\n"
-            f"📞 Admin: @feruz063",
-            reply_markup=main_menu
-        )
-    
+        await callback.message.edit_text("⚠️ Topilmadi yoki tasdiqlangan!", reply_markup=main_menu)
     await state.clear()
     await callback.answer()
 
-@dp.callback_query(lambda c: c.data.startswith('check_status_'))
-async def check_deposit_status(callback: types.CallbackQuery):
-    user_id_1win = callback.data.split('_', 2)[2]
-    
+@dp.callback_query(lambda c: c.data.startswith('check_'))
+async def check_status(callback: types.CallbackQuery):
+    user_id_1win = callback.data.split('_', 1)[1]
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
-    cursor.execute('''
-        SELECT status, amount FROM pending_deposits
-        WHERE user_id_1win = ?
-        ORDER BY created_at DESC LIMIT 1
-    ''', (user_id_1win,))
+    cursor.execute('''SELECT status, amount FROM pending_deposits WHERE user_id_1win = ? ORDER BY created_at DESC LIMIT 1''', (user_id_1win,))
     row = cursor.fetchone()
     conn.close()
-    
     if row:
         status, amount = row
         if status == "success":
-            await callback.message.edit_text(
-                f"✅ **DEPOZIT TASDIQLANGAN!**\n\n"
-                f"💰 {int(amount):,} UZS hisobingizga tushdi.",
-                reply_markup=InlineKeyboardMarkup(
-                    inline_keyboard=[[InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]]
-                )
-            )
+            await callback.message.edit_text(f"✅ **TASDIQLANGAN!**\n💰 {int(amount):,} UZS hisobingizga tushdi.", reply_markup=main_menu)
         elif status == "failed":
-            await callback.message.edit_text(
-                f"❌ **XATOLIK YUZ BERDI**\n\n📞 Admin: @feruz063",
-                reply_markup=main_menu
-            )
+            await callback.message.edit_text("❌ Xatolik! @feruz063", reply_markup=main_menu)
         else:
-            await callback.answer("⏳ Hali tasdiqlanmagan. Iltimos kuting...", show_alert=True)
+            await callback.answer("⏳ Hali tasdiqlanmadi, kuting...", show_alert=True)
     else:
         await callback.answer("❌ Topilmadi", show_alert=True)
 
@@ -461,23 +299,12 @@ async def deposit_cancel(callback: types.CallbackQuery, state: FSMContext):
     data = await state.get_data()
     user_id_1win = data.get('user_id_1win', '')
     random_amount = data.get('random_amount', 0)
-    
-    # Bekor qilish
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE pending_deposits SET status = 'cancelled'
-        WHERE user_id_1win = ? AND random_amount = ? AND status = 'pending'
-    ''', (user_id_1win, random_amount))
+    cursor.execute('''UPDATE pending_deposits SET status = 'cancelled' WHERE user_id_1win = ? AND random_amount = ? AND status = 'pending' ''', (user_id_1win, random_amount))
     conn.commit()
     conn.close()
-    
-    await callback.message.edit_text(
-        "❌ **Depozit bekor qilindi!**",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[[InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]]
-        )
-    )
+    await callback.message.edit_text("❌ Bekor qilindi!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]]))
     await state.clear()
     await callback.answer()
 
@@ -493,149 +320,73 @@ async def withdraw_id(message: types.Message, state: FSMContext):
         await message.answer("❌ ID faqat raqamlardan iborat!\n📝 Qayta kiriting:")
         return
     await state.update_data(user_id=message.text)
-    await message.answer("💳 **Pulni qaysi kartaga olishni xohlaysiz?**\nKarta raqamini kiriting (faqat raqamlar):")
+    await message.answer("💳 Kartangiz raqamini kiriting (faqat raqamlar):")
     await state.set_state(WithdrawState.waiting_card)
 
 @dp.message(WithdrawState.waiting_card)
 async def withdraw_card(message: types.Message, state: FSMContext):
     card = message.text.replace(" ", "")
     if len(card) < 15 or not card.isdigit():
-        await message.answer("❌ Noto'g'ri karta raqami! Qayta kiriting (faqat raqamlar):")
+        await message.answer("❌ Noto'g'ri karta raqami! Qayta kiriting:")
         return
     await state.update_data(card=card)
-    await message.answer(
-        "🔑 **1Win dan kelgan kodni kiriting:**\n"
-        "(Kod 4 dan 10 belgigacha bo'lishi mumkin)\n"
-        "Masalan: 1234, 123456, 1234567890"
-    )
+    await message.answer("🔑 1Win dan kelgan kodni kiriting (4-10 belgi):")
     await state.set_state(WithdrawState.waiting_code)
 
 @dp.message(WithdrawState.waiting_code)
 async def withdraw_code(message: types.Message, state: FSMContext):
     code = message.text.strip()
-    
     if len(code) < 4 or len(code) > 10:
-        await message.answer("❌ Kod 4 dan 10 belgigacha bo'lishi kerak!\nMasalan: 1234, 123456, 1234567890\n\nQayta kiriting:")
+        await message.answer("❌ Kod 4-10 belgi bo'lishi kerak!\nQayta kiriting:")
         return
-    
     data = await state.get_data()
     user_id = data.get('user_id')
     card = data.get('card')
-    
-    await message.answer(
-        f"✅ **So'rovingiz qabul qilindi!**\n\n"
-        f"📝 1Win ID: {user_id}\n"
-        f"💳 Karta: {card}\n"
-        f"🔑 Kod: `{code}`\n\n"
-        f"🔔 Admin tekshirib tasdiqlaydi.\n"
-        f"⏰ Odatda 5-15 daqiqa ichida.",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]
-            ]
-        )
-    )
-    
-    await bot.send_message(
-        ADMIN_ID,
-        f"📤 **YANGI YECHIB OLISH SO'ROVI!**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 @{message.from_user.username or 'NoUsername'}\n"
-        f"🆔 Telegram ID: {message.from_user.id}\n"
-        f"📝 1Win ID: {user_id}\n"
-        f"💳 Karta: {card}\n"
-        f"🔑 Kod: `{code}`\n"
-        f"💰 Summa: **(Admin kiritadi)**",
-        reply_markup=InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="✅ TASDIQLASH", callback_data=f"with_admin_accept_{message.from_user.id}_{user_id}_{card}_{code}")],
-                [InlineKeyboardButton(text="❌ BEKOR QILISH", callback_data=f"with_admin_reject_{message.from_user.id}")]
-            ]
-        )
-    )
+    await message.answer(f"✅ **Qabul qilindi!**\n📝 ID: {user_id}\n💳 Karta: {card}\n🔑 Kod: `{code}`\n\n🔔 Admin tasdiqlaydi.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="🏠 BOSH SAHIFA", callback_data="back_main")]]))
+    await bot.send_message(ADMIN_ID, f"📤 **YECHIB OLISH**\n👤 @{message.from_user.username or 'NoUsername'}\n🆔 TG: {message.from_user.id}\n📝 1Win ID: {user_id}\n💳 Karta: {card}\n🔑 Kod: `{code}`", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="✅ TASDIQLASH", callback_data=f"w_yes_{message.from_user.id}_{user_id}_{card}_{code}")], [InlineKeyboardButton(text="❌ BEKOR QILISH", callback_data=f"w_no_{message.from_user.id}")]]))
     await state.clear()
 
-@dp.callback_query(lambda c: c.data.startswith('with_admin_accept_'))
+@dp.callback_query(lambda c: c.data.startswith('w_yes_'))
 async def withdraw_admin_accept(callback: types.CallbackQuery, state: FSMContext):
     parts = callback.data.split('_')
-    user_telegram_id = int(parts[3])
-    user_id_1win = parts[4]
-    card = parts[5] if len(parts) > 5 else ""
-    code = parts[6] if len(parts) > 6 else ""
-    
-    await callback.message.edit_text(
-        f"📤 **YECHIB OLISH TASDIQLASH**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-        f"👤 Telegram ID: {user_telegram_id}\n"
-        f"📝 1Win ID: {user_id_1win}\n"
-        f"💳 Karta: {card}\n"
-        f"🔑 Kod: `{code}`\n\n"
-        f"💰 **Yechiladigan summani kiriting (so'mda):**"
-    )
-    await state.update_data(
-        user_telegram_id=user_telegram_id,
-        user_id_1win=user_id_1win,
-        card=card,
-        code=code
-    )
+    user_telegram_id = int(parts[2])
+    user_id_1win = parts[3]
+    card = parts[4] if len(parts) > 4 else ""
+    code = parts[5] if len(parts) > 5 else ""
+    await callback.message.edit_text(f"📤 **SUMMANI KIRITING:**\n👤 TG: {user_telegram_id}\n📝 1Win: {user_id_1win}")
+    await state.update_data(user_telegram_id=user_telegram_id, user_id_1win=user_id_1win)
     await state.set_state(AdminWithdrawState.waiting_amount)
 
 @dp.message(AdminWithdrawState.waiting_amount)
 async def admin_withdraw_amount(message: types.Message, state: FSMContext):
     try:
         amount = int(message.text.replace(" ", ""))
-        if amount < 50000:
-            await message.answer("❌ Minimal yechib olish: 50,000 so'm")
-            return
-        if amount > 50000000:
-            await message.answer("❌ Maksimal: 50,000,000 so'm")
-            return
-        
         data = await state.get_data()
         user_telegram_id = data.get('user_telegram_id')
         user_id_1win = data.get('user_id_1win')
-        
-        await message.answer("⏳ 1Win API ga yuborilmoqda...")
         result = await send_deposit_to_1win(user_id_1win, amount)
-        
-        if result.get('success', False) or (200 <= result.get('status', 0) < 300):
-            await bot.send_message(
-                user_telegram_id,
-                f"✅ **PUL YECHISH MUVAFFAQIYATLI!**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"💰 {amount:,} UZS kartangizga yuborildi.\n"
-                f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-                f"⏰ Odatda 5-30 daqiqa ichida tushadi.",
-                reply_markup=main_menu
-            )
-            await message.answer(f"✅ **Tasdiqlandi!**\nSumma: {amount:,} UZS\nFoydalanuvchiga xabar yuborildi.")
+        if result.get('success', False):
+            await bot.send_message(user_telegram_id, f"✅ Pul yechildi!\n💰 {amount:,} UZS", reply_markup=main_menu)
+            await message.answer(f"✅ {amount:,} UZS")
         else:
-            error_msg = result.get('message', 'Nomaʼlum xatolik')
-            await bot.send_message(
-                user_telegram_id,
-                f"❌ **XATOLIK!**\n{error_msg}\n📞 Admin: @feruz063",
-                reply_markup=main_menu
-            )
-            await message.answer(f"❌ API xatoligi: {error_msg}")
-        
+            await bot.send_message(user_telegram_id, f"❌ Xatolik: {result.get('message')}\n@feruz063")
+            await message.answer(f"❌ {result.get('message')}")
         await state.clear()
-    except ValueError:
-        await message.answer("❌ Faqat raqam kiriting!")
+    except:
+        await message.answer("❌ Raqam kiriting!")
 
-@dp.callback_query(lambda c: c.data.startswith('with_admin_reject_'))
+@dp.callback_query(lambda c: c.data.startswith('w_no_'))
 async def withdraw_admin_reject(callback: types.CallbackQuery):
-    user_telegram_id = int(callback.data.split('_')[3])
-    await bot.send_message(user_telegram_id, "❌ **Pul yechish so'rovi bekor qilindi.**\n📞 Admin: @feruz063", reply_markup=main_menu)
-    await callback.message.edit_text("❌ Yechib olish bekor qilindi.")
+    user_telegram_id = int(callback.data.split('_')[2])
+    await bot.send_message(user_telegram_id, "❌ Bekor qilindi.", reply_markup=main_menu)
+    await callback.message.edit_text("❌ Bekor qilindi.")
 
-# ==================== ORQAGA ====================
 @dp.callback_query(lambda c: c.data == "back_main")
 async def back_main(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.message.answer("🏠 Bosh sahifa", reply_markup=main_menu)
 
-# ==================== USERBOT - HUMO CARDBOTNI KUZATISH ====================
-# Session string orqali userbot yaratish
+# ==================== USERBOT ====================
 if SESSION_STRING:
     userbot_client = TelegramClient(StringSession(SESSION_STRING), api_id, api_hash)
 else:
@@ -644,161 +395,72 @@ else:
 @userbot_client.on(events.NewMessage(chats=['@HUMOcardbot']))
 async def humo_handler(event):
     message = event.message.text
-    logging.info(f"📩 HUMO xabar keldi")
+    logging.info(f"📩 HUMO xabar")
+    await bot.send_message(ADMIN_ID, f"📩 **HUMO:**\n\n{message}")
     
-    # Adminga to'liq xabarni yuborish
-    await bot.send_message(ADMIN_ID, f"📩 **HUMO XABAR:**\n\n{message}")
-    
-    # "To'ldirish" so'zini tekshirish
     if "To'ldirish" not in message:
-        logging.info("⏭️ 'To'ldirish' emas, o'tkazib yuborildi")
         return
     
-    logging.info("✅ 'To'ldirish' xabari topildi!")
-    
-    # ➕ belgisi yonidagi summani olish
     amount_match = re.search(r'[\+➕]\s*(\d[\d\.]*,\d{2})\s*UZS', message)
-    
     if amount_match:
         amount_str = amount_match.group(1).replace(".", "").replace(",", ".")
         incoming_amount = round(float(amount_str))
-        logging.info(f"💰 ➕ dan olingan summa: {incoming_amount}")
     else:
-        # Barcha summalarni topib, eng kichigini olish
         all_amounts = re.findall(r'(\d[\d\.]*,\d{2})\s*UZS', message)
         if not all_amounts:
             await bot.send_message(ADMIN_ID, "❌ Summa topilmadi!")
             return
-        
-        amounts = []
-        for amt in all_amounts:
-            amount_str = amt.replace(".", "").replace(",", ".")
-            amounts.append(round(float(amount_str)))
-        
+        amounts = [round(float(a.replace(".", "").replace(",", "."))) for a in all_amounts]
         incoming_amount = min(amounts)
-        logging.info(f"💰 Eng kichik summa: {incoming_amount} (barcha: {amounts})")
     
-    await bot.send_message(ADMIN_ID, f"🔍 Qidirilayotgan summa: **{incoming_amount}** UZS")
-    
-    # Bazadan qidirish
+    await bot.send_message(ADMIN_ID, f"🔍 Qidirilmoqda: **{incoming_amount}** UZS")
     deposit = get_pending_deposit_by_amount(incoming_amount)
     
     if not deposit:
-        logging.info(f"❌ {incoming_amount} UZS uchun depozit topilmadi")
-        await bot.send_message(ADMIN_ID, f"❌ **Topilmadi!**\nSumma: {incoming_amount} UZS\nBazada mos depozit yo'q.")
+        await bot.send_message(ADMIN_ID, f"❌ {incoming_amount} UZS topilmadi!")
         return
     
     deposit_id, user_id_1win, telegram_id, amount, random_amount, card_number = deposit
-    logging.info(f"✅ Depozit topildi! ID={deposit_id}")
-    await bot.send_message(
-        ADMIN_ID,
-        f"✅ **DEPOZIT TOPILDI!**\n"
-        f"━━━━━━━━━━━━━━━━━━━━━\n"
-        f"🆔 ID: {deposit_id}\n"
-        f"👤 1Win ID: {user_id_1win}\n"
-        f"💬 Telegram ID: {telegram_id}\n"
-        f"💰 So'ralgan: {amount:,} UZS\n"
-        f"🔢 Random: {random_amount:,.2f} UZS"
-    )
+    await bot.send_message(ADMIN_ID, f"✅ Topildi!\nID: {deposit_id}\n1Win: {user_id_1win}\nSumma: {amount}")
     
-    # 1Win API ga yuborish
-    await bot.send_message(ADMIN_ID, "⏳ 1Win API ga so'rov yuborilmoqda...")
     result = await send_deposit_to_1win(user_id_1win, int(amount))
-    logging.info(f"API natija: {result}")
     
-    if result.get("success", False) or (200 <= result.get("status", 0) < 300):
-        status = "success"
+    if result.get("success", False):
+        update_deposit_status(deposit_id, "success")
         try:
-            await bot.send_message(
-                int(telegram_id),
-                f"✅ **DEPOZIT TASDIQLANDI!**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"💰 {int(amount):,} UZS 1Win hisobingizga tushdi.\n"
-                f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
-                f"🎮 O'yinlar: /start",
-                reply_markup=main_menu
-            )
-            logging.info(f"✅ Foydalanuvchiga xabar yuborildi: {telegram_id}")
-        except Exception as e:
-            logging.error(f"❌ Foydalanuvchiga xabar yuborishda xatolik: {e}")
-        
-        await bot.send_message(
-            ADMIN_ID,
-            f"✅ **AVTOMATIK TASDIQLANDI!**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 1Win ID: {user_id_1win}\n"
-            f"💰 Summa: {int(amount):,} UZS\n"
-            f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        )
+            await bot.send_message(int(telegram_id), f"✅ **TASDIQLANDI!**\n💰 {int(amount):,} UZS", reply_markup=main_menu)
+        except:
+            pass
+        await bot.send_message(ADMIN_ID, f"✅ AVTOMATIK! {int(amount):,} UZS")
     else:
-        status = "failed"
-        error_msg = result.get('message', 'Nomaʼlum xatolik')
+        update_deposit_status(deposit_id, "failed")
+        error_msg = result.get('message', 'Xatolik')
         try:
-            await bot.send_message(
-                int(telegram_id),
-                f"❌ **XATOLIK YUZ BERDI**\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n"
-                f"Xatolik: {error_msg}\n\n"
-                f"📞 Adminga murojaat qiling: @feruz063",
-                reply_markup=main_menu
-            )
-        except Exception as e:
-            logging.error(f"❌ Foydalanuvchiga xabar yuborishda xatolik: {e}")
-        
-        await bot.send_message(
-            ADMIN_ID,
-            f"❌ **XATOLIK!**\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 1Win ID: {user_id_1win}\n"
-            f"💰 Summa: {int(amount):,} UZS\n"
-            f"⚠️ Xatolik: {error_msg}\n\n"
-            f"Qo'lda tekshirish kerak!"
-        )
-    
-    # Holatni yangilash
-    update_deposit_status(deposit_id, status)
-    logging.info(f"✅ Holat yangilandi: {deposit_id} -> {status}")
+            await bot.send_message(int(telegram_id), f"❌ Xatolik: {error_msg}\n@feruz063")
+        except:
+            pass
+        await bot.send_message(ADMIN_ID, f"❌ Xatolik: {error_msg}")
 
-# ==================== ASOSIY ISHGA TUSHIRISH ====================
+# ==================== MAIN ====================
 async def main():
-    print("=" * 50)
-    print("🚀 1WIN CASH BOT ISHGA TUSHMOQDA...")
-    print("=" * 50)
-    
-    # Userbotni ishga tushirish
+    print("🚀 Bot ishga tushmoqda...")
     try:
         if not SESSION_STRING:
-            print("📝 Session string topilmadi, telefon raqam orqali kirish...")
             await userbot_client.start(phone=phone)
             session_string = userbot_client.session.save()
-            print(f"\n⚠️ USERBOT_SESSION ni Railway Environment ga qo'shing:\n{session_string}\n")
-            await bot.send_message(ADMIN_ID, f"📝 **USERBOT_SESSION:**\n\n`{session_string}`\n\n⚠️ Buni Railway Environment ga qo'shing!")
+            print(f"\n📝 USERBOT_SESSION:\n{session_string}\n")
+            await bot.send_message(ADMIN_ID, f"📝 **USERBOT_SESSION:**\n\n`{session_string}`\n\nRailway Environment ga qo'shing!")
         else:
             await userbot_client.start()
-        
-        print("✅ Userbot ishga tushdi!")
-        print("📡 @HUMOcardbot kuzatilmoqda...")
-        
-        # Userbotni background da ishga tushirish
+        print("✅ Userbot OK")
         asyncio.create_task(userbot_client.run_until_disconnected())
-        
     except Exception as e:
-        print(f"❌ Userbot ishga tushmadi: {e}")
-        await bot.send_message(ADMIN_ID, f"❌ Userbot xatosi: {e}")
+        print(f"❌ Userbot: {e}")
+        await bot.send_message(ADMIN_ID, f"❌ Userbot: {e}")
     
-    # Bot polling
-    try:
-        print("✅ Bot polling boshlandi!")
-        await bot.send_message(ADMIN_ID, "✅ **Bot ishga tushdi!**\n📡 @HUMOcardbot kuzatilmoqda...")
-        await dp.start_polling(bot)
-    except Exception as e:
-        print(f"❌ Bot polling xatosi: {e}")
-        await bot.send_message(ADMIN_ID, f"❌ Bot xatosi: {e}")
+    print("✅ Bot polling...")
+    await bot.send_message(ADMIN_ID, "✅ **Bot ishga tushdi!**")
+    await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\n🛑 Bot to'xtatildi!")
-    except Exception as e:
-        print(f"❌ Xatolik: {e}")
+    asyncio.run(main())
