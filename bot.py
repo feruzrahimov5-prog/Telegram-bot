@@ -239,7 +239,7 @@ async def deposit_cancel(callback: types.CallbackQuery, state: FSMContext):
     await callback.message.edit_text("❌ Bekor qilindi!", reply_markup=main_menu)
     await state.clear()
 
-# ==================== PUL YECHISH (QISQA) ====================
+# ==================== PUL YECHISH ====================
 @dp.message(lambda message: message.text == "💸 PUL YECHISH")
 async def withdraw_start(message: types.Message, state: FSMContext):
     await message.answer("📝 **1WIN ID** raqamingizni kiriting:", reply_markup=types.ReplyKeyboardRemove())
@@ -282,7 +282,7 @@ async def back_main(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.message.answer("🏠 Bosh sahifa", reply_markup=main_menu)
 
-# ==================== USERBOT (HUMO AVTOMATIK) ====================
+# ==================== USERBOT (HUMO AVTOMATIK TASDIQLASH) ====================
 if SESSION_STRING:
     userbot_client = TelegramClient(StringSession(SESSION_STRING), api_id, api_hash)
 else:
@@ -294,18 +294,20 @@ async def humo_handler(event):
     if not message:
         return
 
-    # Xabarni log va adminga yuborish
-    print(f"📩 HUMO xabar: {message}")
     logging.info(f"📩 HUMO xabar: {message}")
     await bot.send_message(ADMIN_ID, f"📩 **HUMO xabar:**\n{message}")
 
-    # Summani qidirish (UZS bilan)
+    # ✅ FAQAT ➕ BELGISI BO'LGAN XABARLARNI QABUL QILISH
+    if "➕" not in message and "+" not in message:
+        await bot.send_message(ADMIN_ID, "⏭️ Kirim belgisi yo'q, o'tkazib yuborildi.")
+        return
+
+    # ✅ SUMMANI QIDIRISH (UZS BILAN)
     match = re.search(r'([\d.,]+)\s*UZS', message)
     if not match:
         await bot.send_message(ADMIN_ID, "❌ Summa topilmadi (UZS yo'q).")
         return
 
-    # Summani tozalash (1.234,56 -> 1234.56)
     raw = match.group(1).replace('.', '').replace(',', '.')
     try:
         amount = round(float(raw))
@@ -313,18 +315,19 @@ async def humo_handler(event):
         await bot.send_message(ADMIN_ID, f"❌ Summa noto'g'ri: {raw}")
         return
 
-    await bot.send_message(ADMIN_ID, f"💰 Aniqlangan summa: {amount} UZS")
+    await bot.send_message(ADMIN_ID, f"💰 Aniqlangan summa: **{amount}** UZS")
+    logging.info(f"💰 Aniqlangan summa: {amount} UZS")
 
-    # Bazadan pending depozitni qidirish
+    # BAZADAN DEPOZITNI QIDIRISH
     deposit = get_pending_deposit_by_amount(amount)
     if not deposit:
-        await bot.send_message(ADMIN_ID, f"❌ {amount} UZS uchun pending depozit topilmadi.")
+        await bot.send_message(ADMIN_ID, f"❌ {amount} UZS uchun kutilayotgan depozit topilmadi.")
         return
 
     dep_id, user_id_1win, tg_id, dep_amount, rand_amt, card = deposit
     await bot.send_message(ADMIN_ID, f"✅ Depozit topildi: ID {user_id_1win}, summa {dep_amount}")
 
-    # API ga yuborish
+    # API GA YUBORISH
     result = await send_deposit_to_1win(user_id_1win, int(dep_amount))
     if result.get("success"):
         update_deposit_status(dep_id, "success")
