@@ -46,7 +46,7 @@ def get_next_card():
     return card
 
 def generate_random_amount(amount):
-    """Random summa yaratish (butun son)"""
+    """Random summa yaratish (BUTUN SON)"""
     change = random.uniform(0.1, 0.5)
     if random.choice([True, False]):
         return int(round(amount * (1 + change / 100)))
@@ -106,6 +106,7 @@ def add_pending_deposit(user_id_1win, telegram_id, amount, random_amount, card_n
     conn.close()
 
 def get_pending_deposit_by_amount(incoming_amount):
+    """Summani yaxlitlab qidirish (tiyin farqini hisobga olib)"""
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
     cursor.execute('''SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number FROM pending_deposits WHERE status = 'pending' AND CAST(ROUND(random_amount) AS INTEGER) = ? ORDER BY created_at DESC LIMIT 1''', (incoming_amount,))
@@ -356,18 +357,29 @@ async def humo_handler(event):
     logging.info(f"📩 HUMO xabar: {message}")
     await bot.send_message(ADMIN_ID, f"📩 **HUMO xabar:**\n{message}")
 
-    # ✅ FAQAT ➕ BELGISI BO'LGAN XABARLARNI QABUL QILISH
-    if "➕" not in message and "+" not in message:
-        await bot.send_message(ADMIN_ID, "⏭️ Kirim belgisi yo'q, o'tkazib yuborildi.")
-        return
-
-    # ✅ SUMMANI QIDIRISH (UZS BILAN)
-    match = re.search(r'([\d.,]+)\s*UZS', message)
+    # ✅ HAR QANDAY FORMATDAGI SUMMANI QIDIRISH (NUQTA, VERGUL, BO'SH JOY)
+    # 20.045,00 | 20,045.00 | 20 045,00 | 20045
+    match = re.search(r'([\d\s.,]+)\s*UZS', message)
     if not match:
         await bot.send_message(ADMIN_ID, "❌ Summa topilmadi (UZS yo'q).")
         return
 
-    raw = match.group(1).replace('.', '').replace(',', '.')
+    raw = match.group(1)
+    # Bo'sh joylarni o'chirish
+    raw = raw.replace(' ', '')
+    # Agar nuqta va vergul aralash bo'lsa (20.045,00)
+    if ',' in raw and '.' in raw:
+        # Yevropa formati: 20.045,00 -> 20045.00
+        raw = raw.replace('.', '').replace(',', '.')
+    # Agar faqat vergul bo'lsa (20,045.00)
+    elif ',' in raw and '.' not in raw:
+        # 20,045.00 -> 20045.00
+        raw = raw.replace(',', '')
+    # Agar faqat nuqta bo'lsa (20.045.00)
+    elif '.' in raw and ',' not in raw:
+        # 20.045 -> 20045
+        raw = raw.replace('.', '')
+
     try:
         amount = round(float(raw))
     except:
