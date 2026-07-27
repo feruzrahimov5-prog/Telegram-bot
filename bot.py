@@ -106,7 +106,6 @@ def add_pending_deposit(user_id_1win, telegram_id, amount, random_amount, card_n
     conn.close()
 
 def get_pending_deposit_by_amount(incoming_amount):
-    """Summani yaxlitlab qidirish (tiyin farqini hisobga olib)"""
     conn = sqlite3.connect(PENDING_DB)
     cursor = conn.cursor()
     cursor.execute('''SELECT id, user_id_1win, telegram_id, amount, random_amount, card_number FROM pending_deposits WHERE status = 'pending' AND CAST(ROUND(random_amount) AS INTEGER) = ? ORDER BY created_at DESC LIMIT 1''', (incoming_amount,))
@@ -357,27 +356,18 @@ async def humo_handler(event):
     logging.info(f"📩 HUMO xabar: {message}")
     await bot.send_message(ADMIN_ID, f"📩 **HUMO xabar:**\n{message}")
 
-    # ✅ HAR QANDAY FORMATDAGI SUMMANI QIDIRISH (NUQTA, VERGUL, BO'SH JOY)
-    # 20.045,00 | 20,045.00 | 20 045,00 | 20045
+    # ✅ HAR QANDAY FORMATDAGI SUMMANI QIDIRISH
     match = re.search(r'([\d\s.,]+)\s*UZS', message)
     if not match:
         await bot.send_message(ADMIN_ID, "❌ Summa topilmadi (UZS yo'q).")
         return
 
-    raw = match.group(1)
-    # Bo'sh joylarni o'chirish
-    raw = raw.replace(' ', '')
-    # Agar nuqta va vergul aralash bo'lsa (20.045,00)
+    raw = match.group(1).replace(' ', '')
     if ',' in raw and '.' in raw:
-        # Yevropa formati: 20.045,00 -> 20045.00
         raw = raw.replace('.', '').replace(',', '.')
-    # Agar faqat vergul bo'lsa (20,045.00)
     elif ',' in raw and '.' not in raw:
-        # 20,045.00 -> 20045.00
         raw = raw.replace(',', '')
-    # Agar faqat nuqta bo'lsa (20.045.00)
     elif '.' in raw and ',' not in raw:
-        # 20.045 -> 20045
         raw = raw.replace('.', '')
 
     try:
@@ -389,7 +379,6 @@ async def humo_handler(event):
     await bot.send_message(ADMIN_ID, f"💰 Aniqlangan summa: **{amount}** UZS")
     logging.info(f"💰 Aniqlangan summa: {amount} UZS")
 
-    # BAZADAN DEPOZITNI QIDIRISH
     deposit = get_pending_deposit_by_amount(amount)
     if not deposit:
         await bot.send_message(ADMIN_ID, f"❌ {amount} UZS uchun kutilayotgan depozit topilmadi.")
@@ -398,7 +387,6 @@ async def humo_handler(event):
     dep_id, user_id_1win, tg_id, dep_amount, rand_amt, card = deposit
     await bot.send_message(ADMIN_ID, f"✅ Depozit topildi: ID {user_id_1win}, summa {dep_amount}")
 
-    # API GA YUBORISH
     result = await send_deposit_to_1win(user_id_1win, int(dep_amount))
     if result.get("success"):
         update_deposit_status(dep_id, "success")
