@@ -45,9 +45,7 @@ def get_next_card():
     card_index = (card_index + 1) % len(CARDS)
     return card
 
-# ==================== RANDOM SUMMA (BUTUN SON) ====================
 def generate_random_amount(amount):
-    """Random summa yaratish (BUTUN SON)"""
     change = random.uniform(0.1, 0.5)
     if random.choice([True, False]):
         return int(round(amount * (1 + change / 100)))
@@ -177,6 +175,71 @@ async def stats_cmd(message: types.Message):
     pending = get_pending_deposits_count()
     await message.answer(f"📊 **STATISTIKA**\n👥 Foydalanuvchilar: {total}\n⏳ Kutilayotgan: {pending}")
 
+# ==================== FOYDALANUVCHILAR RO'YXATI ====================
+@dp.message(lambda message: message.text == "/users" and message.from_user.id == ADMIN_ID)
+async def users_list(message: types.Message):
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id, username, first_name, last_name, joined_date FROM users ORDER BY joined_date DESC')
+    users = cursor.fetchall()
+    conn.close()
+    
+    if not users:
+        await message.answer("📭 Foydalanuvchilar ro'yxati bo'sh.")
+        return
+    
+    text = "📋 **FOYDALANUVCHILAR RO'YXATI**\n"
+    text += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    for i, (user_id, username, first_name, last_name, joined_date) in enumerate(users, 1):
+        full_name = f"{first_name or ''} {last_name or ''}".strip() or "Noma'lum"
+        text += f"{i}. @{username or 'NoUsername'} | {full_name}\n"
+        text += f"   🆔 `{user_id}` | 📅 {joined_date[:10]}\n\n"
+        
+        if i % 20 == 0 and i < len(users):
+            text += f"━━━━━━━━━━━━━━━━━━━━━\n"
+            text += f"📌 Yana {len(users) - i} ta foydalanuvchi bor.\n"
+            text += f"To'liq ro'yxat uchun /users_all deb yozing."
+            break
+    
+    await message.answer(text, parse_mode="Markdown")
+
+# ==================== BROADCAST (BARCHAGA XABAR) ====================
+@dp.message(lambda message: message.text.startswith("/broadcast") and message.from_user.id == ADMIN_ID)
+async def broadcast_message(message: types.Message):
+    text = message.text.replace("/broadcast", "").strip()
+    if not text:
+        await message.answer("❌ Xabar matnini yozing!\nMisol: /broadcast Bot ishlayabdi!")
+        return
+    
+    conn = sqlite3.connect(DB_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT user_id FROM users')
+    users = cursor.fetchall()
+    conn.close()
+    
+    if not users:
+        await message.answer("📭 Foydalanuvchilar ro'yxati bo'sh.")
+        return
+    
+    sent = 0
+    failed = 0
+    
+    for user in users:
+        user_id = user[0]
+        try:
+            await bot.send_message(user_id, f"📢 {text}")
+            sent += 1
+        except:
+            failed += 1
+    
+    await message.answer(
+        f"✅ **Xabar yuborildi!**\n"
+        f"📤 Yuborildi: {sent} ta\n"
+        f"❌ Xatolik: {failed} ta\n"
+        f"👥 Jami: {len(users)} ta"
+    )
+
 # ==================== DEPOZIT ====================
 @dp.message(lambda message: message.text == "💎 HISOB TO'LDIRISH")
 async def deposit_start(message: types.Message, state: FSMContext):
@@ -274,7 +337,7 @@ async def deposit_cancel(callback: types.CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.answer()
 
-# ==================== PUL YECHISH (ADMIN QO'LDA BAJARADI) ====================
+# ==================== PUL YECHISH ====================
 @dp.message(lambda message: message.text == "💸 PUL YECHISH")
 async def withdraw_start(message: types.Message, state: FSMContext):
     await message.answer("📝 **1WIN ID** raqamingizni kiriting:", reply_markup=types.ReplyKeyboardRemove())
@@ -326,7 +389,6 @@ async def withdraw_code(message: types.Message, state: FSMContext):
     amount = data.get('amount')
     card = data.get('card')
     
-    # Mijozga javob
     await message.answer(
         f"✅ **So'rovingiz qabul qilindi!**\n\n"
         f"📝 1Win ID: {user_id}\n"
@@ -339,7 +401,6 @@ async def withdraw_code(message: types.Message, state: FSMContext):
         ])
     )
     
-    # Adminga xabar (FAQAT XABAR, API CHAQIRILMAYDI)
     await bot.send_message(
         ADMIN_ID,
         f"📤 **YANGI YECHIB OLISH SO'ROVI!**\n\n"
@@ -359,7 +420,7 @@ async def back_main(callback: types.CallbackQuery):
     await callback.message.delete()
     await callback.message.answer("🏠 Bosh sahifa", reply_markup=main_menu)
 
-# ==================== USERBOT (HUMO AVTOMATIK TASDIQLASH) ====================
+# ==================== USERBOT ====================
 if SESSION_STRING:
     userbot_client = TelegramClient(StringSession(SESSION_STRING), api_id, api_hash)
 else:
@@ -374,7 +435,6 @@ async def humo_handler(event):
     logging.info(f"📩 HUMO xabar: {message}")
     await bot.send_message(ADMIN_ID, f"📩 **HUMO xabar:**\n{message}")
 
-    # ✅ HAR QANDAY FORMATDAGI SUMMANI QIDIRISH
     match = re.search(r'([\d\s.,]+)\s*UZS', message)
     if not match:
         await bot.send_message(ADMIN_ID, "❌ Summa topilmadi (UZS yo'q).")
