@@ -21,7 +21,7 @@ from telethon.sessions import StringSession
 # ==================== SOZLAMALAR ====================
 logging.basicConfig(level=logging.INFO)
 
-TOKEN = "8838328983:AAEPRK77sfsjAahOREz3LJKbo1hCUknWp9Q"
+TOKEN = "8838328983:AAEPRK77sfsjAah0REz3LJKbo1hCUknWp9Q"
 ADMIN_ID = 8620161861
 API_KEY = "51c9fcdaecf3a239cdf85aaeddd098e273b208e505edf2f66d94d3efee562751"
 
