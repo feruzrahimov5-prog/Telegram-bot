@@ -204,41 +204,30 @@ async def users_list(message: types.Message):
     
     await message.answer(text, parse_mode="Markdown")
 
-# ==================== BROADCAST (BARCHAGA XABAR) ====================
+# ==================== BROADCAST ====================
 @dp.message(lambda message: message.text.startswith("/broadcast") and message.from_user.id == ADMIN_ID)
 async def broadcast_message(message: types.Message):
     text = message.text.replace("/broadcast", "").strip()
     if not text:
         await message.answer("❌ Xabar matnini yozing!\nMisol: /broadcast Bot ishlayabdi!")
         return
-    
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
     cursor.execute('SELECT user_id FROM users')
     users = cursor.fetchall()
     conn.close()
-    
     if not users:
         await message.answer("📭 Foydalanuvchilar ro'yxati bo'sh.")
         return
-    
     sent = 0
     failed = 0
-    
     for user in users:
-        user_id = user[0]
         try:
-            await bot.send_message(user_id, f"📢 {text}")
+            await bot.send_message(user[0], f"📢 {text}")
             sent += 1
         except:
             failed += 1
-    
-    await message.answer(
-        f"✅ **Xabar yuborildi!**\n"
-        f"📤 Yuborildi: {sent} ta\n"
-        f"❌ Xatolik: {failed} ta\n"
-        f"👥 Jami: {len(users)} ta"
-    )
+    await message.answer(f"✅ Yuborildi: {sent} ta\n❌ Xatolik: {failed} ta")
 
 # ==================== DEPOZIT ====================
 @dp.message(lambda message: message.text == "💎 HISOB TO'LDIRISH")
