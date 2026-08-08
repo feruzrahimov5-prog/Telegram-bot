@@ -22,7 +22,7 @@ from telethon.sessions import StringSession
 logging.basicConfig(level=logging.INFO)
 
 TOKEN = "8869897716:AAG13rX0nbq3DKvpVx7ZrAHa2zx-Xy9xhd0"
-ADMIN_ID = 1829563275
+ADMIN_ID = 8620161861
 API_KEY = "51c9fcdaecf3a239cdf85aaeddd098e273b208e505edf2f66d94d3efee562751"
 
 api_id = 35651244
